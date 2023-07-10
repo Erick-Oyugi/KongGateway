@@ -1,0 +1,103 @@
+version: '3.7'
+
+services:
+  kong-database:
+    image: postgres:${POSTGRES_VERSION:?postgres_version}
+    container_name: kong-database
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:?postgres_user}
+      - POSTGRES_DB=${POSTGRES_DB:?postgres_database}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?postgres_password}
+    volumes:
+      #update this value
+      - ./pg_data:/var/lib/postgresql/data
+    restart: always
+    ports:
+      #for testing only, remove in production
+      - 5432:5432
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - elk
+
+  kong:
+    depends_on:
+      - kong-database
+    # image: kong:${KONG_VERSION:-latest}
+    build: .
+    # user: kong
+    container_name: kong
+    volumes:
+      - ./plugins:/usr/local/kong/js-plugins
+      - ./lua-plugins:/usr/local/kong/plugins
+      ####### TESTING ONLY #######
+      - ./test:/home
+
+    # restart: always
+    environment:
+      - KONG_DATABASE=postgres
+      - KONG_PG_HOST=${KONG_PG_HOST:-kong-database}
+      - KONG_PG_DATABASE=${POSTGRES_DB:-kong}
+      - KONG_PG_USER=${POSTGRES_USER:-kong}
+      - KONG_PG_PASSWORD=${POSTGRES_PASSWORD:-kong}
+      - KONG_ADMIN_LISTEN=${KONG_ADMIN_LISTEN:-127.0.0.1:8001}
+      - KONG_STREAM_LISTEN=${KONG_STREAM_LISTEN:-0.0.0.0:5555}
+
+      - KONG_PROXY_LISTEN=${KONG_PROXY_LISTEN:-0.0.0.0:8000, 0.0.0.0:8443 ssl http2}
+      - KONG_NGINX_HTTP_RESOLVER=${KONG_NGINX_HTTP_RESOLVER:-8.8.8.8}
+      - KONG_PROXY_ERROR_LOG=/dev/stderr
+      - KONG_ADMIN_ERROR_LOG=/dev/stderr
+
+      # Adding kong log to a file
+      # - KONG_PROXY_ACCESS_LOG=/var/log/proxy_access.log
+      # - KONG_ADMIN_ACCESS_LOG=/var/log/admin_access.log
+
+      # - KONG_PREFIX=/usr/local/kong/
+      # - KONG_PROXY_STREAM_ERROR_LOG=/dev/stderr
+      # - KONG_PROXY_STREAM_ACCESS_LOG=/dev/stderr
+      # - KONG_LOG_LEVEL=notice
+
+      - KONG_TRUSTED_IPS=0.0.0.0/0,::/0
+      - KONG_REAL_IP_RECURSIVE=on
+      # Enable the JS plugin server
+      - KONG_PLUGINSERVER_NAMES=js
+      - KONG_PLUGINSERVER_JS_SOCKET=/usr/local/kong/js_pluginserver.sock
+      - KONG_PLUGINSERVER_JS_START_CMD=/usr/local/bin/kong-js-pluginserver -v --plugins-directory /usr/local/kong/js-plugins
+      - KONG_PLUGINSERVER_JS_QUERY_CMD=/usr/local/bin/kong-js-pluginserver --plugins-directory /usr/local/kong/js-plugins --dump-all-plugins
+
+      - KONG_PLUGINS=bundled,key-authorization,request-enrichment,eclectics-authorization,request-validation
+      - KONG_LUA_PACKAGE_PATH=/usr/local/?.lua;;
+      - KONG_LUA_PACKAGE_CPATH=/usr/local/?.lua;;
+    ports:
+      - 443:8443
+      - 8001:8001
+      - 8000:8000
+      - 0.0.0.0:5555:5555
+      - 0.0.0.0:9999:9999
+      # - 6666:6666
+      # - original configuration is below
+      # - 80:8000
+      # - 443:8443 
+      # - 127.0.0.1:8001:8001
+    healthcheck:
+      test: [ "CMD", "kong", "health" ]
+      interval: 5s
+      timeout: 2s
+      retries: 15
+    networks:
+      - elk
+
+  eclectics:
+    depends_on:
+      - kong
+    build: ./eclectics
+    container_name: eclectics
+    volumes:
+      - ./test:/home
+
+networks:
+  elk:
+    driver: bridge

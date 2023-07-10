@@ -1,0 +1,42 @@
+node {
+    stage('Checkout') {
+        checkout scm
+    }
+
+    stage("add env file") {
+        addEnvFile()
+    }
+
+    stage('Build') {
+        runScript(CONTAINER_NAME, CONTAINER_TAG)
+    }
+}
+
+def addEnvFile() {
+    echo "Adding environment variables to .env file...\n"
+    def vars = """KONG_VERSION=${env.KONG_VERSION}\n
+                KONG_ADMIN_LISTEN=${env.KONG_ADMIN_LISTEN}\n
+                KONG_PROXY_LISTEN=${env.KONG_PROXY_LISTEN}\n
+                KONG_NGINX_HTTP_RESOLVER=${env.KONG_NGINX_HTTP_RESOLVER}\n
+                KONG_STREAM_LISTEN=${env.KONG_STREAM_LISTEN}\n
+                POSTGRES_VERSION=${env.POSTGRES_VERSION}\n
+                POSTGRES_USER=${env.POSTGRES_USER}\n
+                POSTGRES_PASSWORD=${env.POSTGRES_PASSWORD}\n
+                POSTGRES_DB=${env.POSTGRES_DB}\n
+                ELASTIC_VERSION=${env.ELASTIC_VERSION}\n
+                ELASTIC_USER=${env.ELASTIC_USER}\n
+                ELASTIC_PASSWORD=${env.ELASTIC_PASSWORD}\n
+                LOGSTASH_INTERNAL_PASSWORD=${env.LOGSTASH_INTERNAL_PASSWORD}\n
+                KIBANA_SYSTEM_PASSWORD=${env.KIBANA_SYSTEM_PASSWORD}\n"""
+    sh "echo '$vars' > .env"
+    sh "echo 'environment variables added\n'"
+    }
+
+def runScript() {
+    echo "Running script...\n"
+    sh "chmod +x kong-setup.sh"
+    sh "./kong-setup.sh"
+    echo "Script completed\n"
+}
+//Not adding remove containers script since the database is also on the same VM now
+
